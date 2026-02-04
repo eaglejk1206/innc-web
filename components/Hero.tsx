@@ -34,9 +34,9 @@ const Hero: React.FC = () => {
         
         {/* Main Title - Redesigned for Luxury Look */}
         <div className="mb-10 opacity-0 animate-[fadeIn_1s_ease-out_0.3s_forwards] translate-y-4">
-          <h1 className="text-5xl md:text-7xl lg:text-9xl font-display font-medium text-white tracking-widest leading-none uppercase flex flex-col md:block items-center gap-4 md:gap-0">
+          <h1 className="text-4xl md:text-6xl lg:text-7xl xl:text-8xl font-display font-medium text-white tracking-widest leading-none uppercase flex flex-col md:block items-center gap-2 md:gap-0">
             <span className="block md:inline">Insight</span>
-            <span className="md:mx-6 text-innc-mint font-serif italic font-light text-4xl md:text-7xl lg:text-8xl align-middle">&</span>
+            <span className="md:mx-4 text-innc-mint font-serif italic font-light text-3xl md:text-5xl lg:text-6xl xl:text-7xl align-middle">&</span>
             <span className="block md:inline">Creation</span>
           </h1>
         </div>
