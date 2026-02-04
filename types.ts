@@ -1,7 +1,7 @@
 import React from 'react';
 
 export interface PortfolioItem {
-  id: number;
+  id: string; // Changed from number to string for Firestore IDs
   title: string;
   category: 'visual' | 'archive';
   client: string;

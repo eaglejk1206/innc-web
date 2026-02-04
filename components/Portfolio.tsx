@@ -1,10 +1,12 @@
 import React, { useState, useEffect } from 'react';
 import { PortfolioItem } from '../types';
-import { X, ExternalLink, Play } from 'lucide-react';
+import { X, ExternalLink, Play, Loader2 } from 'lucide-react';
+import { db } from '../firebase';
+import { collection, getDocs } from 'firebase/firestore';
 
 export const INITIAL_PORTFOLIO: PortfolioItem[] = [
   {
-    id: 1,
+    id: "1",
     title: "Samsung Galaxy Global Campaign",
     category: "visual",
     client: "Samsung Electronics",
@@ -13,7 +15,7 @@ export const INITIAL_PORTFOLIO: PortfolioItem[] = [
     description: "글로벌 런칭 캠페인을 위한 하이엔드 3D 모션 그래픽 및 제품 연출 영상."
   },
   {
-    id: 2,
+    id: "2",
     title: "국립현대미술관 아카이브 프로젝트",
     category: "archive",
     client: "MMCA",
@@ -22,7 +24,7 @@ export const INITIAL_PORTFOLIO: PortfolioItem[] = [
     description: "1980-90년대 전시 기록물 500여 점에 대한 4K 디지털 변환 및 메타데이터 작업."
   },
   {
-    id: 3,
+    id: "3",
     title: "KIA EV9 Brand Film",
     category: "visual",
     client: "KIA",
@@ -32,7 +34,7 @@ export const INITIAL_PORTFOLIO: PortfolioItem[] = [
     description: "미래지향적인 모빌리티 경험을 표현한 브랜드 필름 제작."
   },
   {
-    id: 4,
+    id: "4",
     title: "KBS 방송자료 디지털 복원",
     category: "archive",
     client: "KBS",
@@ -41,7 +43,7 @@ export const INITIAL_PORTFOLIO: PortfolioItem[] = [
     description: "방송 초기 아날로그 테이프의 열화 복원 및 색보정, 디지털 라이브러리 구축."
   },
   {
-    id: 5,
+    id: "5",
     title: "Seoul Tourism TVC",
     category: "visual",
     client: "Seoul City",
@@ -50,7 +52,7 @@ export const INITIAL_PORTFOLIO: PortfolioItem[] = [
     description: "서울의 다채로운 매력을 담은 관광 홍보 영상 시리즈."
   },
   {
-    id: 6,
+    id: "6",
     title: "독립기념관 역사자료 영구보존",
     category: "archive",
     client: "Independence Hall",
@@ -73,23 +75,35 @@ const Portfolio: React.FC = () => {
   const [items, setItems] = useState<PortfolioItem[]>([]);
   const [filter, setFilter] = useState<'all' | 'visual' | 'archive'>('all');
   const [selectedItem, setSelectedItem] = useState<PortfolioItem | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
-    const loadItems = () => {
-      const stored = localStorage.getItem('innc_portfolio');
-      if (stored) {
-        setItems(JSON.parse(stored));
-      } else {
+    const fetchPortfolio = async () => {
+      try {
+        const querySnapshot = await getDocs(collection(db, "portfolio"));
+        if (!querySnapshot.empty) {
+          const mappedData = querySnapshot.docs.map(doc => ({
+            ...(doc.data() as any),
+            id: doc.id
+          })) as PortfolioItem[];
+          setItems(mappedData);
+        } else {
+          // If Firestore is empty (e.g., fresh start), show empty or fallback
+          // For now, let's keep it empty to encourage Admin to add items, 
+          // or you could use INITIAL_PORTFOLIO as a visual fallback if preferred.
+          // To strictly follow "use Firestore", we'll just set empty.
+          setItems([]); 
+        }
+      } catch (error) {
+        console.error("Error fetching portfolio items:", error);
+        // Fallback to initial data just so the site isn't broken on API error
         setItems(INITIAL_PORTFOLIO);
-        localStorage.setItem('innc_portfolio', JSON.stringify(INITIAL_PORTFOLIO));
+      } finally {
+        setIsLoading(false);
       }
     };
     
-    loadItems();
-    
-    // Listen for storage events (in case admin updates in another tab)
-    window.addEventListener('storage', loadItems);
-    return () => window.removeEventListener('storage', loadItems);
+    fetchPortfolio();
   }, []);
 
   const filteredItems = items.filter(item => 
@@ -97,7 +111,7 @@ const Portfolio: React.FC = () => {
   );
 
   return (
-    <section id="portfolio" className="py-24 bg-innc-black">
+    <section id="portfolio" className="py-24 bg-innc-black min-h-screen">
       <div className="max-w-7xl mx-auto px-6">
         <div className="flex flex-col md:flex-row justify-between items-end mb-16">
           <div>
@@ -122,33 +136,43 @@ const Portfolio: React.FC = () => {
           </div>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
-          {filteredItems.map((item) => (
-            <div 
-              key={item.id}
-              onClick={() => setSelectedItem(item)}
-              className="group cursor-pointer relative overflow-hidden rounded-xl aspect-[4/3] bg-gray-900"
-            >
-              <img 
-                src={item.imageUrl} 
-                alt={item.title} 
-                className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-110 opacity-80 group-hover:opacity-100"
-              />
-              <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/20 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex flex-col justify-end p-8">
-                <span className="text-innc-mint text-xs font-bold uppercase tracking-wider mb-2">
-                  {item.category}
-                </span>
-                <h3 className="text-2xl font-bold text-white mb-1">{item.title}</h3>
-                <p className="text-gray-400 text-sm">{item.client}</p>
-              </div>
-              {item.youtubeUrl && (
-                <div className="absolute top-4 right-4 w-8 h-8 bg-red-600 rounded-full flex items-center justify-center shadow-lg z-10">
-                  <Play size={12} className="text-white fill-white ml-0.5" />
+        {isLoading ? (
+          <div className="flex justify-center items-center h-64">
+            <Loader2 className="animate-spin text-innc-mint" size={48} />
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
+            {filteredItems.length > 0 ? filteredItems.map((item) => (
+              <div 
+                key={item.id}
+                onClick={() => setSelectedItem(item)}
+                className="group cursor-pointer relative overflow-hidden rounded-xl aspect-[4/3] bg-gray-900"
+              >
+                <img 
+                  src={item.imageUrl} 
+                  alt={item.title} 
+                  className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-110 opacity-80 group-hover:opacity-100"
+                />
+                <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/20 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex flex-col justify-end p-8">
+                  <span className="text-innc-mint text-xs font-bold uppercase tracking-wider mb-2">
+                    {item.category}
+                  </span>
+                  <h3 className="text-2xl font-bold text-white mb-1">{item.title}</h3>
+                  <p className="text-gray-400 text-sm">{item.client}</p>
                 </div>
-              )}
-            </div>
-          ))}
-        </div>
+                {item.youtubeUrl && (
+                  <div className="absolute top-4 right-4 w-8 h-8 bg-red-600 rounded-full flex items-center justify-center shadow-lg z-10">
+                    <Play size={12} className="text-white fill-white ml-0.5" />
+                  </div>
+                )}
+              </div>
+            )) : (
+              <div className="col-span-3 text-center text-gray-500 py-12">
+                No portfolio items found.
+              </div>
+            )}
+          </div>
+        )}
       </div>
 
       {/* Modal */}
@@ -203,13 +227,17 @@ const Portfolio: React.FC = () => {
               </div>
               
               <h2 className="text-3xl font-bold text-white mb-4">{selectedItem.title}</h2>
-              <p className="text-gray-400 leading-relaxed mb-8 text-lg">
-                {selectedItem.description}
-                <br /><br />
-                {selectedItem.category === 'archive' 
-                  ? '본 프로젝트는 원본 매체의 물리적 손상을 정밀 진단한 후, 당사 고유의 클리닝 프로세스를 거쳐 4K 60fps 포맷으로 디지털 변환되었습니다.' 
-                  : '브랜드의 핵심 가치를 시각적으로 극대화하기 위해 기획 단계부터 참여하여, 혁신적인 촬영 기법과 VFX 기술을 도입했습니다.'}
-              </p>
+              <div className="mb-8">
+                <p className="text-gray-400 leading-relaxed text-lg mb-8">
+                  {selectedItem.description}
+                </p>
+                {/* Replaced Text Slogan */}
+                <div className="text-center px-4">
+                  <p className="font-montserrat text-gray-400 text-sm md:text-base tracking-[0.1em] font-medium leading-relaxed">
+                    "Beyond the surface, we capture the authentic story and the true essence within."
+                  </p>
+                </div>
+              </div>
 
               {selectedItem.youtubeUrl && (
                  <a 
