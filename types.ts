@@ -7,6 +7,7 @@ export interface PortfolioItem {
   client: string;
   year: string;
   imageUrl: string;
+  youtubeUrl?: string; // 유튜브 영상 주소 (선택 사항)
   description: string;
 }
 

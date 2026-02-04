@@ -28,6 +28,7 @@ export const INITIAL_PORTFOLIO: PortfolioItem[] = [
     client: "KIA",
     year: "2023",
     imageUrl: "https://picsum.photos/800/600?random=3",
+    youtubeUrl: "https://www.youtube.com/watch?v=sI31yLq-P1E",
     description: "미래지향적인 모빌리티 경험을 표현한 브랜드 필름 제작."
   },
   {
@@ -58,6 +59,15 @@ export const INITIAL_PORTFOLIO: PortfolioItem[] = [
     description: "중요 역사 기록물의 초고해상도 스캐닝 및 디지털 아카이빙 시스템 설계."
   }
 ];
+
+// Helper to extract YouTube Video ID (Duplicated for standalone component usage)
+const getYoutubeId = (url: string) => {
+  if (!url) return null;
+  // Improved regex to handle standard watch URLs, short URLs (youtu.be), embed URLs, and Shorts
+  const regExp = /^.*(youtu.be\/|v\/|u\/\w\/|embed\/|watch\?v=|&v=|shorts\/)([^#&?]*).*/;
+  const match = url.match(regExp);
+  return (match && match[2]) ? match[2] : null;
+};
 
 const Portfolio: React.FC = () => {
   const [items, setItems] = useState<PortfolioItem[]>([]);
@@ -131,6 +141,11 @@ const Portfolio: React.FC = () => {
                 <h3 className="text-2xl font-bold text-white mb-1">{item.title}</h3>
                 <p className="text-gray-400 text-sm">{item.client}</p>
               </div>
+              {item.youtubeUrl && (
+                <div className="absolute top-4 right-4 w-8 h-8 bg-red-600 rounded-full flex items-center justify-center shadow-lg z-10">
+                  <Play size={12} className="text-white fill-white ml-0.5" />
+                </div>
+              )}
             </div>
           ))}
         </div>
@@ -143,25 +158,41 @@ const Portfolio: React.FC = () => {
             className="bg-innc-dark w-full max-w-4xl rounded-2xl overflow-hidden shadow-2xl border border-white/10"
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="relative h-64 md:h-96">
-              <img 
-                src={selectedItem.imageUrl} 
-                alt={selectedItem.title} 
-                className="w-full h-full object-cover"
-              />
+            <div className="relative h-64 md:h-96 bg-black">
+              {selectedItem.youtubeUrl ? (
+                <iframe 
+                  width="100%" 
+                  height="100%" 
+                  src={`https://www.youtube.com/embed/${getYoutubeId(selectedItem.youtubeUrl)}?autoplay=1&rel=0&modestbranding=1&enablejsapi=1`} 
+                  title="YouTube video player" 
+                  frameBorder="0" 
+                  allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" 
+                  allowFullScreen
+                  className="w-full h-full"
+                ></iframe>
+              ) : (
+                <>
+                  <img 
+                    src={selectedItem.imageUrl} 
+                    alt={selectedItem.title} 
+                    className="w-full h-full object-cover"
+                  />
+                  {selectedItem.category === 'visual' && (
+                    <div className="absolute inset-0 flex items-center justify-center">
+                      <div className="w-20 h-20 bg-white/20 backdrop-blur rounded-full flex items-center justify-center cursor-pointer hover:scale-110 transition-transform">
+                        <Play size={32} className="text-white fill-white ml-2" />
+                      </div>
+                    </div>
+                  )}
+                </>
+              )}
+              
               <button 
                 onClick={() => setSelectedItem(null)}
-                className="absolute top-4 right-4 w-10 h-10 bg-black/50 rounded-full flex items-center justify-center text-white hover:bg-innc-mint transition-colors"
+                className="absolute top-4 right-4 w-10 h-10 bg-black/50 rounded-full flex items-center justify-center text-white hover:bg-innc-mint transition-colors z-20"
               >
                 <X size={20} />
               </button>
-              {selectedItem.category === 'visual' && (
-                <div className="absolute inset-0 flex items-center justify-center">
-                  <div className="w-20 h-20 bg-white/20 backdrop-blur rounded-full flex items-center justify-center cursor-pointer hover:scale-110 transition-transform">
-                    <Play size={32} className="text-white fill-white ml-2" />
-                  </div>
-                </div>
-              )}
             </div>
             
             <div className="p-8 md:p-12">
@@ -180,9 +211,16 @@ const Portfolio: React.FC = () => {
                   : '브랜드의 핵심 가치를 시각적으로 극대화하기 위해 기획 단계부터 참여하여, 혁신적인 촬영 기법과 VFX 기술을 도입했습니다.'}
               </p>
 
-              <button className="flex items-center gap-2 text-white hover:text-innc-mint transition-colors font-medium">
-                프로젝트 자세히 보기 <ExternalLink size={16} />
-              </button>
+              {selectedItem.youtubeUrl && (
+                 <a 
+                   href={selectedItem.youtubeUrl} 
+                   target="_blank" 
+                   rel="noopener noreferrer"
+                   className="flex items-center gap-2 text-white hover:text-innc-mint transition-colors font-medium"
+                 >
+                  YouTube에서 보기 <ExternalLink size={16} />
+                </a>
+              )}
             </div>
           </div>
         </div>

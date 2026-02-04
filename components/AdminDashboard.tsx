@@ -3,10 +3,11 @@ import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer 
 } from 'recharts';
 import { 
-  LayoutDashboard, FileText, Settings, LogOut, Plus, Edit, Trash2, Upload, Search, User, Save, X 
+  LayoutDashboard, FileText, Settings, LogOut, Plus, Edit, Trash2, Upload, Search, User, Save, X, Lock, Youtube 
 } from 'lucide-react';
 import { AdminTab, PortfolioItem } from '../types';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
+
 // We duplicate the initial data here as a fallback to ensure standalone functionality if visited first
 const INITIAL_PORTFOLIO_FALLBACK: PortfolioItem[] = [
   {
@@ -34,6 +35,7 @@ const INITIAL_PORTFOLIO_FALLBACK: PortfolioItem[] = [
     client: "KIA",
     year: "2023",
     imageUrl: "https://picsum.photos/800/600?random=3",
+    youtubeUrl: "https://www.youtube.com/watch?v=sI31yLq-P1E",
     description: "미래지향적인 모빌리티 경험을 표현한 브랜드 필름 제작."
   },
   {
@@ -81,9 +83,47 @@ const mockInquiries = [
   { id: 3, name: "박지성", company: "서울시청", type: "Visual", date: "2024-05-18" },
 ];
 
+// Helper to extract YouTube Video ID
+const getYoutubeId = (url: string) => {
+  if (!url) return null;
+  // Improved regex to handle standard watch URLs, short URLs (youtu.be), embed URLs, and Shorts
+  const regExp = /^.*(youtu.be\/|v\/|u\/\w\/|embed\/|watch\?v=|&v=|shorts\/)([^#&?]*).*/;
+  const match = url.match(regExp);
+  return (match && match[2]) ? match[2] : null;
+};
+
 const AdminDashboard: React.FC = () => {
+  // Authentication State
+  const [isAuthenticated, setIsAuthenticated] = useState(() => {
+    return localStorage.getItem('innc_admin_auth') === 'true';
+  });
+  const [loginId, setLoginId] = useState('');
+  const [loginPw, setLoginPw] = useState('');
+  const [loginError, setLoginError] = useState('');
+
+  // Dashboard State
   const [activeTab, setActiveTab] = useState<AdminTab>(AdminTab.DASHBOARD);
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
+
+  // Login Handler
+  const handleLogin = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (loginId === 'admin' && loginPw === 'Lupilupi001#') {
+      localStorage.setItem('innc_admin_auth', 'true');
+      setIsAuthenticated(true);
+      setLoginError('');
+    } else {
+      setLoginError('아이디 또는 비밀번호가 올바르지 않습니다.');
+    }
+  };
+
+  // Logout Handler
+  const handleLogout = () => {
+    localStorage.removeItem('innc_admin_auth');
+    setIsAuthenticated(false);
+    setLoginId('');
+    setLoginPw('');
+  };
 
   // Components for Tab Content
   const DashboardHome = () => (
@@ -177,6 +217,7 @@ const AdminDashboard: React.FC = () => {
       year: new Date().getFullYear().toString(),
       category: 'visual',
       imageUrl: '',
+      youtubeUrl: '',
       description: ''
     });
 
@@ -197,6 +238,21 @@ const AdminDashboard: React.FC = () => {
 
     const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
       const { name, value } = e.target;
+      
+      // Auto-generate thumbnail if YouTube URL is entered
+      if (name === 'youtubeUrl') {
+        const videoId = getYoutubeId(value);
+        if (videoId) {
+          // If valid ID found, set youtubeUrl AND automatically update imageUrl to the max res thumbnail
+          setFormData(prev => ({ 
+            ...prev, 
+            [name]: value,
+            imageUrl: `https://img.youtube.com/vi/${videoId}/maxresdefault.jpg`
+          }));
+          return;
+        }
+      }
+
       setFormData(prev => ({ ...prev, [name]: value }));
     };
 
@@ -209,6 +265,7 @@ const AdminDashboard: React.FC = () => {
         year: item.year,
         category: item.category,
         imageUrl: item.imageUrl,
+        youtubeUrl: item.youtubeUrl || '',
         description: item.description
       });
       // Scroll to form and focus
@@ -255,6 +312,7 @@ const AdminDashboard: React.FC = () => {
         year: new Date().getFullYear().toString(),
         category: 'visual',
         imageUrl: '',
+        youtubeUrl: '',
         description: ''
       });
       alert(currentId ? "Project updated successfully!" : "Project created successfully!");
@@ -269,6 +327,7 @@ const AdminDashboard: React.FC = () => {
         year: new Date().getFullYear().toString(),
         category: 'visual',
         imageUrl: '',
+        youtubeUrl: '',
         description: ''
       });
     };
@@ -331,8 +390,13 @@ const AdminDashboard: React.FC = () => {
               filteredItems.map((item) => (
                 <div key={item.id} className="flex items-center justify-between bg-black/30 p-4 rounded-lg border border-white/5 hover:border-white/20 transition-colors">
                   <div className="flex items-center gap-4">
-                    <div className="w-16 h-12 bg-gray-800 rounded overflow-hidden flex-shrink-0">
+                    <div className="w-16 h-12 bg-gray-800 rounded overflow-hidden flex-shrink-0 relative group">
                       <img src={item.imageUrl} alt={item.title} className="w-full h-full object-cover" />
+                      {item.youtubeUrl && (
+                        <div className="absolute inset-0 bg-black/50 flex items-center justify-center">
+                          <Youtube size={16} className="text-white" />
+                        </div>
+                      )}
                     </div>
                     <div>
                       <h4 className="text-white font-bold text-sm md:text-base">{item.title}</h4>
@@ -427,8 +491,22 @@ const AdminDashboard: React.FC = () => {
                   <option value="archive">Digital Archive</option>
                 </select>
               </div>
-              <div>
-                <label className="block text-xs text-gray-500 mb-1 uppercase tracking-wider">Image URL</label>
+              
+              <div className="p-4 bg-innc-black/50 rounded-lg border border-white/5">
+                <label className="block text-xs text-innc-mint mb-2 uppercase tracking-wider font-bold flex items-center gap-2">
+                  <Youtube size={14} /> YouTube Video
+                </label>
+                <input 
+                  type="text" 
+                  name="youtubeUrl"
+                  value={formData.youtubeUrl}
+                  onChange={handleInputChange}
+                  placeholder="Paste YouTube URL here (e.g. https://youtu.be/...)" 
+                  className="w-full bg-black/50 border border-white/10 p-3 rounded text-white focus:border-innc-mint focus:outline-none transition-colors mb-2" 
+                />
+                <p className="text-[10px] text-gray-500 mb-4">* The Thumbnail will be automatically generated below.</p>
+
+                <label className="block text-xs text-gray-500 mb-1 uppercase tracking-wider">Thumbnail Image URL</label>
                 <div className="flex gap-2">
                   <input 
                     type="text" 
@@ -447,6 +525,12 @@ const AdminDashboard: React.FC = () => {
                     Random
                   </button>
                 </div>
+                {formData.imageUrl && (
+                  <div className="mt-4 w-full aspect-video bg-black rounded overflow-hidden border border-white/10 relative">
+                     <img src={formData.imageUrl} alt="Preview" className="w-full h-full object-cover" />
+                     <div className="absolute top-2 left-2 px-2 py-1 bg-black/70 text-white text-xs rounded">Preview</div>
+                  </div>
+                )}
               </div>
             </div>
             
@@ -501,6 +585,66 @@ const AdminDashboard: React.FC = () => {
     </div>
   );
 
+  // If not authenticated, show login screen
+  if (!isAuthenticated) {
+    return (
+      <div className="min-h-screen bg-black flex items-center justify-center p-4">
+        <div className="bg-white/5 border border-white/10 p-8 rounded-2xl w-full max-w-md shadow-2xl backdrop-blur-md">
+          <div className="text-center mb-8">
+            <div className="w-12 h-12 bg-innc-mint rounded-lg flex items-center justify-center font-bold text-black text-xl mx-auto mb-4">
+              I
+            </div>
+            <h2 className="text-2xl font-bold text-white mb-2">Admin Login</h2>
+            <p className="text-gray-400 text-sm">Authorized personnel only</p>
+          </div>
+          
+          <form onSubmit={handleLogin} className="space-y-4">
+            <div>
+              <label className="block text-xs text-gray-500 mb-1 uppercase tracking-wider">Admin ID</label>
+              <input 
+                type="text" 
+                value={loginId}
+                onChange={(e) => setLoginId(e.target.value)}
+                className="w-full bg-black/50 border border-white/10 p-3 rounded text-white focus:border-innc-mint focus:outline-none transition-colors"
+                placeholder="Enter ID"
+              />
+            </div>
+            <div>
+              <label className="block text-xs text-gray-500 mb-1 uppercase tracking-wider">Password</label>
+              <input 
+                type="password" 
+                value={loginPw}
+                onChange={(e) => setLoginPw(e.target.value)}
+                className="w-full bg-black/50 border border-white/10 p-3 rounded text-white focus:border-innc-mint focus:outline-none transition-colors"
+                placeholder="Enter Password"
+              />
+            </div>
+            
+            {loginError && (
+              <div className="text-red-500 text-sm text-center bg-red-500/10 py-2 rounded">
+                {loginError}
+              </div>
+            )}
+
+            <button 
+              type="submit" 
+              className="w-full py-3 bg-innc-mint text-black font-bold rounded hover:bg-innc-mintHover transition-colors mt-2"
+            >
+              Sign In
+            </button>
+          </form>
+
+          <div className="mt-6 pt-6 border-t border-white/10 text-center">
+            <Link to="/" className="text-gray-500 hover:text-white text-sm flex items-center justify-center gap-2 transition-colors">
+              <LogOut size={14} /> Return to Website
+            </Link>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // If authenticated, show dashboard
   return (
     <div className="min-h-screen bg-innc-black text-white flex">
       {/* Sidebar */}
@@ -541,9 +685,17 @@ const AdminDashboard: React.FC = () => {
               <div className="text-xs text-gray-500">admin@innc.co.kr</div>
             </div>
           </div>
-          <Link to="/" className="w-full flex items-center gap-2 text-gray-400 hover:text-white px-2 py-2 transition-colors">
-            <LogOut size={16} /> Exit to Site
-          </Link>
+          <div className="flex flex-col gap-2">
+            <button 
+              onClick={handleLogout}
+              className="w-full flex items-center gap-2 text-gray-400 hover:text-white px-2 py-2 transition-colors text-left"
+            >
+              <LogOut size={16} /> Log Out
+            </button>
+            <Link to="/" className="w-full flex items-center gap-2 text-gray-400 hover:text-white px-2 py-2 transition-colors text-xs border-t border-white/5 pt-2">
+              <ExternalLink size={12} /> View Live Site
+            </Link>
+          </div>
         </div>
       </aside>
 
@@ -558,5 +710,25 @@ const AdminDashboard: React.FC = () => {
     </div>
   );
 };
+
+// Helper component for Icon
+const ExternalLink = ({ size, className }: { size: number, className?: string }) => (
+  <svg 
+    xmlns="http://www.w3.org/2000/svg" 
+    width={size} 
+    height={size} 
+    viewBox="0 0 24 24" 
+    fill="none" 
+    stroke="currentColor" 
+    strokeWidth="2" 
+    strokeLinecap="round" 
+    strokeLinejoin="round" 
+    className={className}
+  >
+    <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path>
+    <polyline points="15 3 21 3 21 9"></polyline>
+    <line x1="10" y1="14" x2="21" y2="3"></line>
+  </svg>
+);
 
 export default AdminDashboard;
