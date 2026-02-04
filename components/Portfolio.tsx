@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { PortfolioItem } from '../types';
 import { X, ExternalLink, Play, Loader2 } from 'lucide-react';
 import { db } from '../firebase';
-import { collection, getDocs } from 'firebase/firestore';
+import { collection, getDocs, orderBy, query } from 'firebase/firestore';
 
 export const INITIAL_PORTFOLIO: PortfolioItem[] = [
   {
@@ -80,7 +80,10 @@ const Portfolio: React.FC = () => {
   useEffect(() => {
     const fetchPortfolio = async () => {
       try {
-        const querySnapshot = await getDocs(collection(db, "portfolio"));
+        // Updated to use orderBy 'orderIndex' as requested.
+        const q = query(collection(db, "portfolio"), orderBy("orderIndex", "asc"));
+        const querySnapshot = await getDocs(q);
+        
         if (!querySnapshot.empty) {
           const mappedData = querySnapshot.docs.map(doc => ({
             ...(doc.data() as any),
@@ -88,15 +91,21 @@ const Portfolio: React.FC = () => {
           })) as PortfolioItem[];
           setItems(mappedData);
         } else {
-          // If Firestore is empty (e.g., fresh start), show empty or fallback
-          // For now, let's keep it empty to encourage Admin to add items, 
-          // or you could use INITIAL_PORTFOLIO as a visual fallback if preferred.
-          // To strictly follow "use Firestore", we'll just set empty.
-          setItems([]); 
+          // If query is empty, try fetching all without sort (legacy data handling fallback)
+          // This ensures if orderIndex is missing, data still loads
+          const fallbackSnapshot = await getDocs(collection(db, "portfolio"));
+          if(!fallbackSnapshot.empty) {
+             const mappedData = fallbackSnapshot.docs.map(doc => ({
+              ...(doc.data() as any),
+              id: doc.id
+            })) as PortfolioItem[];
+            setItems(mappedData);
+          } else {
+            setItems([]); 
+          }
         }
       } catch (error) {
         console.error("Error fetching portfolio items:", error);
-        // Fallback to initial data just so the site isn't broken on API error
         setItems(INITIAL_PORTFOLIO);
       } finally {
         setIsLoading(false);

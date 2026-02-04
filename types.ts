@@ -9,6 +9,7 @@ export interface PortfolioItem {
   imageUrl: string;
   youtubeUrl?: string; // 유튜브 영상 주소 (선택 사항)
   description: string;
+  orderIndex?: number; // 순서 정렬을 위한 인덱스 (Optional for legacy data)
 }
 
 export interface Inquiry {

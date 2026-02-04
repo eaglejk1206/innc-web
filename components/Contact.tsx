@@ -1,5 +1,7 @@
 import React, { useState } from 'react';
 import { Send, MapPin, Phone, Mail, ExternalLink, ArrowRight } from 'lucide-react';
+import { db } from '../firebase';
+import { collection, addDoc, serverTimestamp } from 'firebase/firestore';
 
 const Contact: React.FC = () => {
   const [formStatus, setFormStatus] = useState<'idle' | 'submitting' | 'success'>('idle');
@@ -10,8 +12,22 @@ const Contact: React.FC = () => {
 
     const form = e.currentTarget;
     const formData = new FormData(form);
+    
+    // Extract data for Firestore
+    const submissionData = {
+      name: formData.get('name') as string,
+      contact: formData.get('phone') as string, // Changed 'phone' to 'contact' for consistency
+      category: formData.get('category') as string,
+      message: formData.get('message') as string,
+      createdAt: serverTimestamp(),
+      isRead: false
+    };
 
     try {
+      // 1. Save to Firestore for Admin Dashboard
+      await addDoc(collection(db, "inquiries"), submissionData);
+
+      // 2. Send Email via Formspree
       const response = await fetch("https://formspree.io/f/xlglvjya", {
         method: "POST",
         body: formData,
@@ -23,10 +39,11 @@ const Contact: React.FC = () => {
       if (response.ok) {
         setFormStatus('success');
         form.reset();
-        // Reset button state after 3 seconds
         setTimeout(() => setFormStatus('idle'), 3000);
       } else {
-        alert("메시지 전송에 실패했습니다. 잠시 후 다시 시도해주세요.");
+        // Even if email fails, we saved to DB, so we can consider it partial success or alert user.
+        // For now, let's treat Formspree failure as main error to alert user.
+        alert("메시지 전송에 실패했습니다. (이메일 서버 오류)");
         setFormStatus('idle');
       }
     } catch (error) {

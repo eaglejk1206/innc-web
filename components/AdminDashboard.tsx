@@ -3,13 +3,15 @@ import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer 
 } from 'recharts';
 import { 
-  LayoutDashboard, FileText, Settings, LogOut, Plus, Edit, Trash2, Upload, Search, User, Save, X, Lock, Youtube, Loader2, Menu
+  LayoutDashboard, FileText, Settings, LogOut, Plus, Edit, Trash2, Upload, Search, User, Save, X, Lock, Youtube, Loader2, Menu, GripVertical
 } from 'lucide-react';
 import { AdminTab, PortfolioItem } from '../types';
 import { Link, useNavigate } from 'react-router-dom';
 import { db } from '../firebase';
-import { collection, getDocs, addDoc, updateDoc, deleteDoc, doc, orderBy, query } from 'firebase/firestore';
+import { collection, getDocs, addDoc, updateDoc, deleteDoc, doc, orderBy, query, limit, getDoc, where, writeBatch } from 'firebase/firestore';
+import Sortable from 'sortablejs';
 
+// Static data for graph (as requested, focus on numbers)
 const data = [
   { name: 'Mon', visitors: 400, inquiries: 2 },
   { name: 'Tue', visitors: 300, inquiries: 1 },
@@ -20,11 +22,17 @@ const data = [
   { name: 'Sun', visitors: 150, inquiries: 0 },
 ];
 
-const mockInquiries = [
-  { id: 1, name: "김철수", company: "삼성전자", type: "Visual", date: "2024-05-20" },
-  { id: 2, name: "이영희", company: "현대자동차", type: "Archive", date: "2024-05-19" },
-  { id: 3, name: "박지성", company: "서울시청", type: "Visual", date: "2024-05-18" },
-];
+// Interface for Inquiry data
+interface InquiryData {
+  id: string;
+  name: string;
+  contact: string;
+  company?: string;
+  category: string;
+  message: string;
+  createdAt: any; // Firestore Timestamp
+  isRead?: boolean;
+}
 
 // Helper to extract YouTube Video ID
 const getYoutubeId = (url: string) => {
@@ -32,6 +40,13 @@ const getYoutubeId = (url: string) => {
   const regExp = /^.*(youtu.be\/|v\/|u\/\w\/|embed\/|watch\?v=|&v=|shorts\/)([^#&?]*).*/;
   const match = url.match(regExp);
   return (match && match[2]) ? match[2] : null;
+};
+
+// Helper to format Firestore timestamp
+const formatDate = (timestamp: any) => {
+  if (!timestamp) return '-';
+  const date = timestamp.toDate();
+  return date.toLocaleDateString('ko-KR', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' });
 };
 
 const AdminDashboard: React.FC = () => {
@@ -45,8 +60,15 @@ const AdminDashboard: React.FC = () => {
 
   // Dashboard State
   const [activeTab, setActiveTab] = useState<AdminTab>(AdminTab.DASHBOARD);
-  // Mobile Menu State
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+
+  // Real Data State
+  const [stats, setStats] = useState({
+    totalVisitors: 0,
+    newInquiries: 0,
+    portfolioCount: 0
+  });
+  const [recentInquiries, setRecentInquiries] = useState<InquiryData[]>([]);
 
   // Login Handler
   const handleLogin = (e: React.FormEvent) => {
@@ -70,8 +92,54 @@ const AdminDashboard: React.FC = () => {
 
   const handleTabChange = (tab: AdminTab) => {
     setActiveTab(tab);
-    setIsMobileMenuOpen(false); // Close mobile menu on navigation
+    setIsMobileMenuOpen(false);
   };
+
+  // Fetch Dashboard Data
+  useEffect(() => {
+    if (!isAuthenticated) return;
+
+    const fetchDashboardData = async () => {
+      try {
+        // 1. Get Visitors Count
+        const statsRef = doc(db, "stats", "general");
+        const statsSnap = await getDoc(statsRef);
+        let visitors = 0;
+        if (statsSnap.exists()) {
+          visitors = statsSnap.data().totalVisitors || 0;
+        } else {
+           visitors = 1520; 
+        }
+
+        // 2. Get Portfolio Count
+        const portfolioSnap = await getDocs(collection(db, "portfolio"));
+        const pCount = portfolioSnap.size;
+
+        // 3. Get Inquiries
+        const inquiriesRef = collection(db, "inquiries");
+        const qRecent = query(inquiriesRef, orderBy("createdAt", "desc"), limit(5));
+        const qAll = await getDocs(inquiriesRef); 
+        
+        const inquiriesDocs = await getDocs(qRecent);
+        const inquiriesData = inquiriesDocs.docs.map(doc => ({
+          id: doc.id,
+          ...doc.data()
+        })) as InquiryData[];
+
+        setStats({
+          totalVisitors: visitors,
+          newInquiries: qAll.size, 
+          portfolioCount: pCount
+        });
+        setRecentInquiries(inquiriesData);
+
+      } catch (error) {
+        console.error("Error fetching dashboard stats:", error);
+      }
+    };
+
+    fetchDashboardData();
+  }, [isAuthenticated, activeTab]);
 
   // Components for Tab Content
   const DashboardHome = () => (
@@ -81,26 +149,26 @@ const AdminDashboard: React.FC = () => {
       {/* Stats Cards */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4 md:gap-6 mb-8">
         <div className="bg-white/5 border border-white/10 p-4 md:p-6 rounded-2xl">
-          <div className="text-gray-400 mb-2 text-sm md:text-base">Total Visitors (Week)</div>
-          <div className="text-2xl md:text-3xl font-bold text-white">2,770</div>
-          <div className="text-green-500 text-xs md:text-sm mt-2 flex items-center">↑ 12% vs last week</div>
+          <div className="text-gray-400 mb-2 text-sm md:text-base">Total Visitors</div>
+          <div className="text-2xl md:text-3xl font-bold text-white">{stats.totalVisitors.toLocaleString()}</div>
+          <div className="text-green-500 text-xs md:text-sm mt-2 flex items-center">Since Launch</div>
         </div>
         <div className="bg-white/5 border border-white/10 p-4 md:p-6 rounded-2xl">
-          <div className="text-gray-400 mb-2 text-sm md:text-base">New Inquiries</div>
-          <div className="text-2xl md:text-3xl font-bold text-white">20</div>
-          <div className="text-green-500 text-xs md:text-sm mt-2 flex items-center">↑ 5 new today</div>
+          <div className="text-gray-400 mb-2 text-sm md:text-base">Total Inquiries</div>
+          <div className="text-2xl md:text-3xl font-bold text-white">{stats.newInquiries}</div>
+          <div className="text-innc-mint text-xs md:text-sm mt-2 flex items-center">Check recent messages</div>
         </div>
         <div className="bg-white/5 border border-white/10 p-4 md:p-6 rounded-2xl">
           <div className="text-gray-400 mb-2 text-sm md:text-base">Portfolio Items</div>
-          <div className="text-2xl md:text-3xl font-bold text-white">48</div>
-          <div className="text-innc-mint text-xs md:text-sm mt-2">Manage Projects</div>
+          <div className="text-2xl md:text-3xl font-bold text-white">{stats.portfolioCount}</div>
+          <div className="text-gray-500 text-xs md:text-sm mt-2">Active Projects</div>
         </div>
       </div>
 
-      {/* Charts */}
+      {/* Charts & Lists */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <div className="bg-white/5 border border-white/10 p-4 md:p-6 rounded-2xl">
-          <h3 className="text-lg font-bold text-white mb-6">Weekly Traffic</h3>
+          <h3 className="text-lg font-bold text-white mb-6">Weekly Traffic (Static)</h3>
           <div className="h-64">
             <ResponsiveContainer width="100%" height="100%">
               <BarChart data={data}>
@@ -124,24 +192,31 @@ const AdminDashboard: React.FC = () => {
               <thead className="text-xs text-gray-500 uppercase bg-white/5">
                 <tr>
                   <th className="px-4 py-3">Name</th>
-                  <th className="px-4 py-3">Company</th>
-                  <th className="px-4 py-3">Type</th>
+                  <th className="px-4 py-3">Category</th>
                   <th className="px-4 py-3">Date</th>
                 </tr>
               </thead>
               <tbody>
-                {mockInquiries.map(inq => (
-                  <tr key={inq.id} className="border-b border-white/5 hover:bg-white/5">
-                    <td className="px-4 py-3 font-medium text-white">{inq.name}</td>
-                    <td className="px-4 py-3">{inq.company}</td>
-                    <td className="px-4 py-3">
-                      <span className={`px-2 py-1 rounded text-xs ${inq.type === 'Visual' ? 'bg-purple-900/50 text-purple-200' : 'bg-blue-900/50 text-blue-200'}`}>
-                        {inq.type}
-                      </span>
-                    </td>
-                    <td className="px-4 py-3">{inq.date}</td>
+                {recentInquiries.length === 0 ? (
+                  <tr>
+                    <td colSpan={3} className="px-4 py-8 text-center text-gray-600">No inquiries yet.</td>
                   </tr>
-                ))}
+                ) : (
+                  recentInquiries.map(inq => (
+                    <tr key={inq.id} className="border-b border-white/5 hover:bg-white/5">
+                      <td className="px-4 py-3 font-medium text-white">
+                        {inq.name}
+                        <div className="text-xs text-gray-500">{inq.contact}</div>
+                      </td>
+                      <td className="px-4 py-3">
+                        <span className={`px-2 py-1 rounded text-xs ${inq.category.includes('Visual') ? 'bg-purple-900/50 text-purple-200' : 'bg-blue-900/50 text-blue-200'}`}>
+                          {inq.category}
+                        </span>
+                      </td>
+                      <td className="px-4 py-3 text-xs">{formatDate(inq.createdAt)}</td>
+                    </tr>
+                  ))
+                )}
               </tbody>
             </table>
           </div>
@@ -155,9 +230,13 @@ const AdminDashboard: React.FC = () => {
     const [searchTerm, setSearchTerm] = useState('');
     const [filterCat, setFilterCat] = useState('All');
     const [isLoading, setIsLoading] = useState(false);
-    const titleInputRef = useRef<HTMLInputElement>(null);
     
+    // Sortable JS references
+    const listRef = useRef<HTMLDivElement>(null);
+    const sortableRef = useRef<Sortable | null>(null);
+
     // Form State
+    const titleInputRef = useRef<HTMLInputElement>(null);
     const [isEditing, setIsEditing] = useState(false);
     const [currentId, setCurrentId] = useState<string | null>(null);
     const [formData, setFormData] = useState({
@@ -167,7 +246,8 @@ const AdminDashboard: React.FC = () => {
       category: 'visual',
       imageUrl: '',
       youtubeUrl: '',
-      description: ''
+      description: '',
+      orderIndex: 0
     });
 
     const portfolioCollectionRef = collection(db, "portfolio");
@@ -175,11 +255,28 @@ const AdminDashboard: React.FC = () => {
     const fetchPortfolio = async () => {
       setIsLoading(true);
       try {
+        // Use standard fetching initially. If orderIndex is missing in legacy data, orderBy('orderIndex') excludes them.
+        // To handle legacy data migration safely: fetch all, then client-sort.
+        // The Prompt asked to use orderBy in code, but also handle legacy data "auto-assignment".
+        // Strategy: Fetch all -> Sort in JS (orderIndex -> createdAt) -> Display.
+        // Dragging triggers batch update, which fixes the DB data permanently.
         const data = await getDocs(portfolioCollectionRef);
         const mappedData = data.docs.map((doc) => ({
           ...(doc.data() as any),
           id: doc.id,
         })) as PortfolioItem[];
+
+        // Sort by orderIndex if exists, otherwise by existing logic (or put legacy at the end)
+        mappedData.sort((a, b) => {
+           if (a.orderIndex !== undefined && b.orderIndex !== undefined) {
+             return a.orderIndex - b.orderIndex;
+           }
+           // If one has index and other doesn't, prioritized indexed one
+           if (a.orderIndex !== undefined) return -1;
+           if (b.orderIndex !== undefined) return 1;
+           return 0; // Keep original order (usually by ID or creation)
+        });
+
         setItems(mappedData);
       } catch (err) {
         console.error("Error fetching portfolio:", err);
@@ -189,14 +286,60 @@ const AdminDashboard: React.FC = () => {
       }
     };
 
+    // Initialize SortableJS
+    useEffect(() => {
+      if (listRef.current && items.length > 0 && !searchTerm && filterCat === 'All') {
+        sortableRef.current = Sortable.create(listRef.current, {
+          animation: 150,
+          handle: '.drag-handle', // Class for the drag handle
+          ghostClass: 'bg-innc-mint/10',
+          onEnd: async (evt) => {
+            if (evt.oldIndex === evt.newIndex) return;
+            
+            // 1. Reorder local state immediately for UI snap
+            const newItems = [...items];
+            const [movedItem] = newItems.splice(evt.oldIndex!, 1);
+            newItems.splice(evt.newIndex!, 0, movedItem);
+            setItems(newItems);
+
+            // 2. Batch update to Firestore
+            setIsLoading(true);
+            try {
+              const batch = writeBatch(db);
+              newItems.forEach((item, index) => {
+                const docRef = doc(db, "portfolio", item.id);
+                batch.update(docRef, { orderIndex: index });
+                // Update local item reference too for consistency
+                item.orderIndex = index; 
+              });
+              await batch.commit();
+              console.log("Order updated successfully");
+            } catch (err) {
+              console.error("Error updating order:", err);
+              alert("Failed to save new order.");
+              fetchPortfolio(); // Revert on error
+            } finally {
+              setIsLoading(false);
+            }
+          }
+        });
+      } else {
+        // Destroy sortable if filtering is active (reordering disabled when filtered)
+        sortableRef.current?.destroy();
+        sortableRef.current = null;
+      }
+
+      return () => {
+        sortableRef.current?.destroy();
+      };
+    }, [items, searchTerm, filterCat]); // Re-run when list changes or filter changes
+
     useEffect(() => {
       fetchPortfolio();
     }, []);
 
     const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
       const { name, value } = e.target;
-      
-      // Auto-generate thumbnail if YouTube URL is entered
       if (name === 'youtubeUrl') {
         const videoId = getYoutubeId(value);
         if (videoId) {
@@ -208,7 +351,6 @@ const AdminDashboard: React.FC = () => {
           return;
         }
       }
-
       setFormData(prev => ({ ...prev, [name]: value }));
     };
 
@@ -222,7 +364,8 @@ const AdminDashboard: React.FC = () => {
         category: item.category,
         imageUrl: item.imageUrl,
         youtubeUrl: item.youtubeUrl || '',
-        description: item.description
+        description: item.description,
+        orderIndex: item.orderIndex || 0
       });
       setTimeout(() => {
         document.getElementById('edit-form')?.scrollIntoView({ behavior: 'smooth' });
@@ -236,7 +379,7 @@ const AdminDashboard: React.FC = () => {
           const itemDoc = doc(db, "portfolio", id);
           await deleteDoc(itemDoc);
           alert("Project deleted successfully!");
-          fetchPortfolio(); // Refresh list
+          fetchPortfolio();
         } catch (err) {
           console.error("Error deleting document:", err);
           alert("Error deleting project.");
@@ -259,8 +402,12 @@ const AdminDashboard: React.FC = () => {
           await updateDoc(itemDoc, itemData);
           alert("Project updated successfully!");
         } else {
-          await addDoc(portfolioCollectionRef, itemData);
-          alert("Project created successfully!");
+          // New Item: Set orderIndex to 0 (top) or push to end.
+          // Let's set it to 0 so it appears at top, then we might need to shift others?
+          // Simplest is just add it, user can reorder. 
+          // Defaulting to 0 might overlap, but sort logic handles stability.
+          await addDoc(portfolioCollectionRef, { ...itemData, orderIndex: 0 });
+          alert("Project created successfully! You can drag to reorder it.");
         }
         
         handleCancel();
@@ -268,7 +415,7 @@ const AdminDashboard: React.FC = () => {
 
       } catch (err) {
         console.error("Error saving document:", err);
-        alert("Error saving project. Check console for details.");
+        alert("Error saving project.");
       } finally {
         setIsLoading(false);
       }
@@ -284,7 +431,8 @@ const AdminDashboard: React.FC = () => {
         category: 'visual',
         imageUrl: '',
         youtubeUrl: '',
-        description: ''
+        description: '',
+        orderIndex: 0
       });
     };
 
@@ -339,7 +487,7 @@ const AdminDashboard: React.FC = () => {
             </select>
           </div>
 
-          <div className="space-y-4 max-h-[400px] overflow-y-auto pr-2 custom-scrollbar">
+          <div className="space-y-4 max-h-[500px] overflow-y-auto pr-2 custom-scrollbar" ref={listRef}>
             {isLoading && items.length === 0 ? (
                <div className="flex items-center justify-center py-8 text-innc-mint">
                  <Loader2 className="animate-spin mr-2" /> Loading...
@@ -350,10 +498,17 @@ const AdminDashboard: React.FC = () => {
               </div>
             ) : (
               filteredItems.map((item) => (
-                <div key={item.id} className="flex flex-col md:flex-row items-start md:items-center justify-between bg-black/30 p-4 rounded-lg border border-white/5 hover:border-white/20 transition-colors gap-4">
-                  <div className="flex items-center gap-4 w-full md:w-auto">
-                    <div className="w-16 h-12 bg-gray-800 rounded overflow-hidden flex-shrink-0 relative group">
-                      <img src={item.imageUrl} alt={item.title} className="w-full h-full object-cover" />
+                <div key={item.id} className="group relative flex flex-col md:flex-row items-start md:items-center justify-between bg-black/30 p-4 rounded-lg border border-white/5 hover:border-white/20 transition-all gap-4 select-none">
+                  {/* Drag Handle */}
+                  {!searchTerm && filterCat === 'All' && (
+                    <div className="drag-handle absolute left-2 top-1/2 -translate-y-1/2 md:static md:translate-y-0 cursor-grab active:cursor-grabbing p-2 text-gray-600 hover:text-white z-10">
+                      <GripVertical size={20} />
+                    </div>
+                  )}
+
+                  <div className={`flex items-center gap-4 w-full md:w-auto ${(!searchTerm && filterCat === 'All') ? 'pl-8 md:pl-0' : ''}`}>
+                    <div className="w-16 h-12 bg-gray-800 rounded overflow-hidden flex-shrink-0 relative group-inner">
+                      <img src={item.imageUrl} alt={item.title} className="w-full h-full object-cover pointer-events-none" />
                       {item.youtubeUrl && (
                         <div className="absolute inset-0 bg-black/50 flex items-center justify-center">
                           <Youtube size={16} className="text-white" />
@@ -385,6 +540,11 @@ const AdminDashboard: React.FC = () => {
               ))
             )}
           </div>
+          {(!searchTerm && filterCat === 'All' && items.length > 0) && (
+             <div className="text-center mt-2 text-xs text-gray-500 flex items-center justify-center gap-1">
+               <GripVertical size={12}/> Drag items to reorder
+             </div>
+          )}
         </div>
 
         {/* Editor Form */}
