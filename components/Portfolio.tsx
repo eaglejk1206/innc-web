@@ -155,7 +155,7 @@ const Portfolio: React.FC = () => {
               <div 
                 key={item.id}
                 onClick={() => setSelectedItem(item)}
-                className="group cursor-pointer relative overflow-hidden rounded-xl aspect-[4/3] bg-gray-900"
+                className="group cursor-pointer relative overflow-hidden rounded-xl aspect-video bg-gray-900"
               >
                 <img 
                   src={item.imageUrl} 
